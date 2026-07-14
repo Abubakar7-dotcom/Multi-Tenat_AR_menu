@@ -1,6 +1,11 @@
 import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  createSupabaseSessionClient,
+  getCurrentPlatformAdmin,
+} from "@/lib/supabase/server-session";
 import { MenuRenderer } from "@/components/menu-renderer";
+import { LivePreviewRoot } from "@/components/live-preview-root";
 import { parseConfig, type RestaurantConfig } from "@/lib/config/schema";
 import type { MenuData } from "@/sections/types";
 
@@ -8,6 +13,7 @@ export const revalidate = 3600; // ISR fallback; on-demand revalidatePath fires 
 
 interface MenuPageProps {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ mode?: string }>;
 }
 
 // If a config has no sections yet (brand-new / un-composed restaurant), fall back to a single
@@ -21,30 +27,50 @@ function withFallbackSections(config: RestaurantConfig): RestaurantConfig {
   };
 }
 
-// M2: the page is now driven entirely by DB config through the composition engine (Layers 1-4).
-// The hardcoded M1 rendering is gone — this same renderer draws every restaurant.
+// M2: the page is driven entirely by DB config through the composition engine (Layers 1-4).
+// This route is public and unauthenticated by default, serving only published_config via the
+// anon (RLS-scoped) client — is_active=true is required, exactly as before.
 //
-// This route is PUBLIC and unauthenticated, so it only ever serves published_config. Draft
-// preview (Studio's live iframe, `?mode=preview` → draft_config) is deliberately NOT here yet:
-// serving unpublished drafts to anonymous visitors is unintended disclosure. M3 reintroduces
-// preview behind a platform_admin session check, once that auth surface exists.
-export default async function MenuPage({ params }: MenuPageProps) {
+// `?mode=preview` (Studio's live-preview iframe, M3) serves draft_config instead, requires a
+// verified platform_admin session, and switches to the SESSION client so the
+// platform_admin_all RLS policy grants access regardless of is_active — a brand-new,
+// not-yet-published restaurant must still be previewable, which is the entire point of
+// composing it in Studio before Publish. Unauthenticated preview requests get an identical 404
+// to "restaurant doesn't exist" (never a distinguishable "forbidden"), so this route can't be
+// used to probe which slugs exist or whether preview mode exists at all.
+export default async function MenuPage({ params, searchParams }: MenuPageProps) {
   const { slug } = await params;
+  const { mode } = await searchParams;
+  const isPreview = mode === "preview";
 
-  const supabase = createSupabaseServerClient();
+  if (isPreview) {
+    const admin = await getCurrentPlatformAdmin();
+    if (!admin) notFound();
+  }
 
-  const { data: restaurant } = await supabase
+  const supabase = isPreview
+    ? await createSupabaseSessionClient()
+    : createSupabaseServerClient();
+
+  let query = supabase
     .from("restaurants")
-    .select("id, name, logo_url, published_config, is_active")
-    .eq("slug", slug)
-    .eq("is_active", true)
-    .maybeSingle();
+    .select("id, name, logo_url, draft_config, published_config, is_active")
+    .eq("slug", slug);
+
+  if (!isPreview) {
+    query = query.eq("is_active", true);
+  }
+
+  const { data: restaurant } = await query.maybeSingle();
 
   if (!restaurant) {
     notFound();
   }
 
-  const config = withFallbackSections(parseConfig(restaurant.published_config));
+  const rawConfig = isPreview
+    ? restaurant.draft_config
+    : restaurant.published_config;
+  const config = withFallbackSections(parseConfig(rawConfig));
 
   const [{ data: categories }, { data: items }] = await Promise.all([
     supabase
@@ -66,12 +92,19 @@ export default async function MenuPage({ params }: MenuPageProps) {
     categories: categories ?? [],
     items: items ?? [],
   };
+  const restaurantInfo = { name: restaurant.name, logo_url: restaurant.logo_url };
+
+  if (isPreview) {
+    return (
+      <LivePreviewRoot
+        initialConfig={config}
+        restaurant={restaurantInfo}
+        menuData={menuData}
+      />
+    );
+  }
 
   return (
-    <MenuRenderer
-      config={config}
-      restaurant={{ name: restaurant.name, logo_url: restaurant.logo_url }}
-      menuData={menuData}
-    />
+    <MenuRenderer config={config} restaurant={restaurantInfo} menuData={menuData} />
   );
 }

@@ -2,17 +2,22 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getCurrentPlatformAdmin } from "@/lib/supabase/server-session";
 
-// Draft → Publish (M2 mechanism). Copies draft_config into published_config and revalidates the
-// public page so ISR serves the new config immediately (PLAN.md §7 M2, asset-pipeline SKILL
-// step 6 pattern).
+// Draft → Publish (M2 mechanism, M3 auth-gated). Copies draft_config into published_config and
+// revalidates the public page so ISR serves the new config immediately (PLAN.md §7 M2,
+// asset-pipeline SKILL step 6 pattern).
 //
-// SECURITY (Hard Rule #1): this uses the service-role client, which bypasses RLS. It is NOT yet
-// wired to any route or UI. Before M3 exposes a Publish button, this action MUST verify the
-// caller is an authenticated platform_admin (there is no session check here yet because there
-// is no auth surface yet). Do not call this from any client-reachable path until that gate is
-// added.
+// SECURITY (Hard Rule #1): this uses the service-role client, which bypasses RLS entirely, so
+// this explicit check is the ONLY thing standing between "any caller" and "publish anything."
+// Verified against the M2 tenant-security-reviewer finding — this must run before any DB
+// access, not after.
 export async function publishRestaurant(restaurantId: string): Promise<void> {
+  const admin = await getCurrentPlatformAdmin();
+  if (!admin) {
+    throw new Error("Not authorized: platform admin session required.");
+  }
+
   const supabase = createSupabaseAdminClient();
 
   const { data: restaurant, error: readError } = await supabase
