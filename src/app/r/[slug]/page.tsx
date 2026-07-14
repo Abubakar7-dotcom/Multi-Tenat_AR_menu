@@ -1,23 +1,41 @@
 import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { MenuItemCard } from "@/components/menu-item-card";
+import { MenuRenderer } from "@/components/menu-renderer";
+import { parseConfig, type RestaurantConfig } from "@/lib/config/schema";
+import type { MenuData } from "@/sections/types";
 
-export const revalidate = 3600; // ISR fallback; on-demand revalidatePath lands in M2 with Publish.
+export const revalidate = 3600; // ISR fallback; on-demand revalidatePath fires on Publish.
 
 interface MenuPageProps {
   params: Promise<{ slug: string }>;
 }
 
-// M1: a hardcoded rendering (not the composition engine yet) proving the real data path and
-// AR flow end-to-end for one restaurant. Layer 1-4 composition (tokens, layout shell,
-// section registry) is M2.
+// If a config has no sections yet (brand-new / un-composed restaurant), fall back to a single
+// default menu_grid so an active restaurant is never a blank page. Studio (M3) replaces this by
+// seeding a real preset config; this is just a safety net, not a substitute for composition.
+function withFallbackSections(config: RestaurantConfig): RestaurantConfig {
+  if (config.sections.length > 0) return config;
+  return {
+    ...config,
+    sections: [{ id: "default-menu", type: "menu_grid", settings: {} }],
+  };
+}
+
+// M2: the page is now driven entirely by DB config through the composition engine (Layers 1-4).
+// The hardcoded M1 rendering is gone — this same renderer draws every restaurant.
+//
+// This route is PUBLIC and unauthenticated, so it only ever serves published_config. Draft
+// preview (Studio's live iframe, `?mode=preview` → draft_config) is deliberately NOT here yet:
+// serving unpublished drafts to anonymous visitors is unintended disclosure. M3 reintroduces
+// preview behind a platform_admin session check, once that auth surface exists.
 export default async function MenuPage({ params }: MenuPageProps) {
   const { slug } = await params;
+
   const supabase = createSupabaseServerClient();
 
   const { data: restaurant } = await supabase
     .from("restaurants")
-    .select("id, name, logo_url, is_active")
+    .select("id, name, logo_url, published_config, is_active")
     .eq("slug", slug)
     .eq("is_active", true)
     .maybeSingle();
@@ -25,6 +43,8 @@ export default async function MenuPage({ params }: MenuPageProps) {
   if (!restaurant) {
     notFound();
   }
+
+  const config = withFallbackSections(parseConfig(restaurant.published_config));
 
   const [{ data: categories }, { data: items }] = await Promise.all([
     supabase
@@ -35,52 +55,23 @@ export default async function MenuPage({ params }: MenuPageProps) {
     supabase
       .from("menu_items")
       .select(
-        "id, category_id, name, description, price, image_url, model_glb_url, model_usdz_url, is_available, sort_order"
+        "id, category_id, name, description, price, image_url, model_glb_url, model_usdz_url, badge_text, sort_order"
       )
       .eq("restaurant_id", restaurant.id)
       .eq("is_available", true)
       .order("sort_order", { ascending: true }),
   ]);
 
+  const menuData: MenuData = {
+    categories: categories ?? [],
+    items: items ?? [],
+  };
+
   return (
-    <main className="mx-auto max-w-xl px-4 pb-16">
-      <header className="flex flex-col items-center gap-2 py-8 text-center">
-        {restaurant.logo_url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- R2 domain is dynamic per env.
-          <img
-            src={restaurant.logo_url}
-            alt={restaurant.name}
-            className="h-16 w-16 rounded-full object-cover"
-          />
-        ) : null}
-        <h1 className="text-xl font-bold">{restaurant.name}</h1>
-      </header>
-
-      {(categories ?? []).map((category) => {
-        const categoryItems = (items ?? []).filter(
-          (item) => item.category_id === category.id
-        );
-        if (categoryItems.length === 0) return null;
-
-        return (
-          <section key={category.id} className="mb-8">
-            <h2 className="mb-3 text-lg font-semibold">{category.name}</h2>
-            <div className="grid grid-cols-2 gap-3">
-              {categoryItems.map((item) => (
-                <MenuItemCard
-                  key={item.id}
-                  name={item.name}
-                  description={item.description}
-                  price={item.price}
-                  imageUrl={item.image_url}
-                  modelGlbUrl={item.model_glb_url}
-                  modelUsdzUrl={item.model_usdz_url}
-                />
-              ))}
-            </div>
-          </section>
-        );
-      })}
-    </main>
+    <MenuRenderer
+      config={config}
+      restaurant={{ name: restaurant.name, logo_url: restaurant.logo_url }}
+      menuData={menuData}
+    />
   );
 }
