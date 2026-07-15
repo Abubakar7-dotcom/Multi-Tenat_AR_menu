@@ -30,6 +30,8 @@ export function MenuRenderer({
         {config.sections.map((instance) => {
           // Unknown type (config from a newer deploy, or a removed section) → skip, don't crash.
           if (!isSectionType(instance.type)) return null;
+          // Hidden in Studio — settings are kept, rendering is skipped (draft AND published).
+          if (instance.hidden) return null;
           return (
             // id lets hero_banner CTAs (and any future in-page anchor) scroll to a section.
             <section key={instance.id} id={instance.id}>

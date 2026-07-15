@@ -2,6 +2,7 @@
 
 import type { JsonSchemaProperty } from "@/lib/forms/json-schema";
 import type { MenuData } from "@/sections/types";
+import { curatedFonts, curatedFontFamilies } from "@/lib/theme/fonts";
 import { fieldLabel } from "./field-label";
 
 interface SchemaFormProps {
@@ -161,9 +162,45 @@ function FieldEditor({ fieldKey, schema, value, onChange, menuData }: FieldEdito
 
   if (schema.type === "string") {
     const isColor = fieldKey.toLowerCase().startsWith("color");
+    const isFont = fieldKey === "fontHeading" || fieldKey === "fontBody";
     const isLongText =
-      /body|description/i.test(fieldKey) && !isColor;
+      /body|description/i.test(fieldKey) && !isColor && !isFont;
     const strValue = typeof value === "string" ? value : "";
+
+    if (isFont) {
+      // Curated picker (PLAN.md §4a) with a live preview line rendered in the chosen family —
+      // the Studio layout loads the curated-fonts stylesheet so the preview is real. A config
+      // whose stored family isn't in the curated list still shows and keeps its value (the
+      // token is a free string in the schema; the list is Studio convenience, not a constraint).
+      const isCustom = strValue !== "" && !curatedFontFamilies.includes(strValue);
+      return (
+        <Field label={label}>
+          <select
+            className={inputClass}
+            value={isCustom ? "__custom__" : strValue}
+            onChange={(e) => {
+              if (e.target.value !== "__custom__") onChange(e.target.value);
+            }}
+          >
+            {isCustom ? (
+              <option value="__custom__">{strValue} (custom)</option>
+            ) : null}
+            {curatedFonts.map((f) => (
+              <option key={f.family} value={f.family}>
+                {f.family} — {f.vibe}
+              </option>
+            ))}
+          </select>
+          <span
+            aria-hidden
+            className="rounded border border-gray-100 bg-gray-50 px-3 py-2 text-base text-gray-800"
+            style={{ fontFamily: `'${strValue}', sans-serif` }}
+          >
+            Chicken Karahi — Rs 1,250
+          </span>
+        </Field>
+      );
+    }
 
     if (isColor) {
       return (

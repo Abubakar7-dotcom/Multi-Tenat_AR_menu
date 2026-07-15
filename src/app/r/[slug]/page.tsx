@@ -23,7 +23,7 @@ function withFallbackSections(config: RestaurantConfig): RestaurantConfig {
   if (config.sections.length > 0) return config;
   return {
     ...config,
-    sections: [{ id: "default-menu", type: "menu_grid", settings: {} }],
+    sections: [{ id: "default-menu", type: "menu_grid", settings: {}, hidden: false }],
   };
 }
 

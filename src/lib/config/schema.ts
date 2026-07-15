@@ -39,6 +39,9 @@ export const sectionInstanceSchema = z.object({
   id: z.string(),
   type: z.string(),
   settings: z.record(z.string(), z.unknown()).default({}),
+  // Appended key (Hard Rule #3): lets Studio hide a section without deleting its settings —
+  // the Shopify-editor pattern. Defaults false so every pre-existing config parses unchanged.
+  hidden: z.boolean().default(false),
 });
 
 export type SectionInstance = z.infer<typeof sectionInstanceSchema>;
