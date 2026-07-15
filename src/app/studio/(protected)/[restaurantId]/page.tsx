@@ -29,7 +29,7 @@ export default async function StudioEditorPage({ params }: EditorPageProps) {
     supabase
       .from("menu_items")
       .select(
-        "id, category_id, name, description, price, image_url, model_glb_url, model_usdz_url, badge_text, sort_order"
+        "id, category_id, name, description, price, image_url, model_glb_url, model_usdz_url, badge_text, is_available, sort_order"
       )
       .eq("restaurant_id", restaurant.id)
       .order("sort_order", { ascending: true }),

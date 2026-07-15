@@ -121,6 +121,29 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["platform_admins"]["Row"]>;
         Relationships: [];
       };
+      restaurant_billing: {
+        Row: {
+          restaurant_id: string;
+          stripe_customer_id: string | null;
+          stripe_subscription_id: string | null;
+          subscription_status: string;
+          current_period_end: string | null;
+          updated_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["restaurant_billing"]["Row"]> & {
+          restaurant_id: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["restaurant_billing"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_billing_restaurant_id_fkey";
+            columns: ["restaurant_id"];
+            isOneToOne: true;
+            referencedRelation: "restaurants";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

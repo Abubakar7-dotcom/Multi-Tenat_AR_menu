@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentPlatformAdmin } from "@/lib/supabase/server-session";
-import { SignOutButton } from "./sign-out-button";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 
 // The real auth gate for every /studio/* route except /login (outside this route group).
 // Middleware only confirms a session cookie exists; THIS is what verifies the signed-in user
@@ -21,7 +21,7 @@ export default async function StudioProtectedLayout({
         <span className="text-sm font-semibold">Studio</span>
         <div className="flex items-center gap-3 text-sm text-gray-600">
           <span>{admin.email}</span>
-          <SignOutButton />
+          <SignOutButton redirectTo="/studio/login" />
         </div>
       </div>
       {children}

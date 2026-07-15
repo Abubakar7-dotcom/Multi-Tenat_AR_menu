@@ -52,3 +52,25 @@ export async function getCurrentPlatformAdmin() {
 
   return admin ? { id: user.id, email: user.email ?? null } : null;
 }
+
+// Resolves the current session's user to their admin_users row (restaurant staff), or null if
+// the visitor isn't signed in or isn't restaurant staff. THE gate every /dashboard/* server-side
+// check must use — distinct table from platform_admins (staff and our internal team are never
+// the same identity space, see PLAN.md §1's "separate platform_admins table" decision).
+export async function getCurrentRestaurantStaff() {
+  const supabase = await createSupabaseSessionClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data: staff } = await supabase
+    .from("admin_users")
+    .select("id, restaurant_id")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  return staff
+    ? { id: user.id, email: user.email ?? null, restaurantId: staff.restaurant_id }
+    : null;
+}

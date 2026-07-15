@@ -20,6 +20,7 @@ export type MenuItem = Pick<
   | "model_glb_url"
   | "model_usdz_url"
   | "badge_text"
+  | "is_available"
   | "sort_order"
 >;
 

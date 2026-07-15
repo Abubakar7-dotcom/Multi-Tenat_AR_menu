@@ -14,7 +14,16 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
-export function LoginForm() {
+interface LoginFormProps {
+  redirectTo: string;
+}
+
+// Shared by /studio/login and /dashboard/login — same Supabase Auth mechanics for both
+// identity spaces (platform_admins vs admin_users); only where a successful sign-in lands
+// differs, which the caller decides via `redirectTo`. Which identity space the account
+// actually belongs to is verified server-side afterward (getCurrentPlatformAdmin /
+// getCurrentRestaurantStaff), not here.
+export function LoginForm({ redirectTo }: LoginFormProps) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
   const {
@@ -29,12 +38,13 @@ export function LoginForm() {
     const { error } = await supabase.auth.signInWithPassword(values);
 
     if (error) {
-      // Deliberately generic — don't reveal whether the email exists or isn't a platform admin.
+      // Deliberately generic — don't reveal whether the email exists or which identity space
+      // (or none) it belongs to.
       setServerError("Invalid email or password.");
       return;
     }
 
-    router.replace("/studio");
+    router.replace(redirectTo);
     router.refresh();
   }
 
